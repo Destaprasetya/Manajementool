@@ -4,63 +4,56 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manajemen Tools CRC</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Menggunakan font Inter dan memastikan tampilan responsif */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f7ffec; }
-        .tab-content { min-height: 60vh; }
-        /* Penting untuk memastikan tabel dapat di-scroll horizontal di ponsel */
-        .tool-table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; } 
-        /* Menambahkan kursor pointer untuk kartu yang dapat diklik */
-        .clickable-card { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
-        .clickable-card:hover { transform: translateY(-3px); box-shadow: 0 15px 20px -3px rgba(0, 0, 0, 0.1), 0 6px 8px -4px rgba(0, 0, 0, 0.05); }
-        .card { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05); }
-        .loading-spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-top: 4px solid #fff; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* Style untuk modal */
-        .modal { background-color: rgba(0, 0, 0, 0.5); z-index: 50; }
-        .clickable-text { cursor: pointer; text-decoration: underline; }
-    </style>
-    
-    <!-- Firebase SDKs -->
-    <script type="module">
-// =================================================================
-// GANTI BLOK KODE LAMA PADA BAGIAN DEFINISI VARIABEL LINGKUNGAN
-// =================================================================
+<script type="module">
+        // =================================================================
+        // PERBAIKAN: Impor semua fungsi Firebase yang Anda perlukan
+        // =================================================================
 
-// Variabel Lingkungan (Konfigurasi Firebase yang Benar, disalin dari config.js)
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-// Import the functions you need from the SDKs you need
+        // Impor fungsi inti Firebase App
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+        // Impor fungsi Firebase Authentication (Auth)
+        import { 
+            getAuth, 
+            onAuthStateChanged, 
+            signInAnonymously, 
+            signInWithCustomToken 
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        
+        // Impor fungsi Firebase Firestore (Database)
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            setDoc,
+            updateDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            query, 
+            Timestamp, 
+            runTransaction 
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-// =================================================================
-// GANTI BLOK KODE LAMA DENGAN SCRIPT BARU INI:
-// =================================================================
+        // =================================================================
+        // SISA KODE ANDA DIMULAI DARI SINI (TIDAK PERLU DIUBAH)
+        // =================================================================
 
-// Variabel Lingkungan (Konfigurasi Firebase yang Benar untuk sistemmanajementool)
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyCcVZlndpGzsO8vLTpvQwXCNq0Viic9mLg",
-  authDomain: "manajemen-tool.firebaseapp.com",
-  projectId: "manajemen-tool",
-  storageBucket: "manajemen-tool.firebasestorage.app",
-  messagingSenderId: "140837337763",
-  appId: "1:140837337763:web:bf34c9232528ef9712dd16",
-  measurementId: "G-D8RDP744S9"
-};
-// ...
+        // Variabel Lingkungan (Konfigurasi Firebase yang Benar untuk sistemmanajementool)
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        const firebaseConfig = {
+          apiKey: "AIzaSyCcVZlndpGzsO8vLTpvQwXCNq0Viic9mLg",
+          authDomain: "manajemen-tool.firebaseapp.com",
+          projectId: "manajemen-tool",
+          storageBucket: "manajemen-tool.firebasestorage.app",
+          messagingSenderId: "140837337763",
+          appId: "1:140837337763:web:bf34c9232528ef9712dd16",
+          measurementId: "G-D8RDP744S9"
+        };
+        // ...
 
-// Variabel Firebase dan Authentication
-// Definisikan variabel lain menggunakan objek konfigurasi yang valid
+        // Variabel Firebase dan Authentication
+        // Definisikan variabel lain menggunakan objek konfigurasi yang valid
         let db, auth;
         let userId = null;
         let isAuthReady = false;
@@ -90,6 +83,11 @@ const firebaseConfig = {
                 .reduce((sum, loan) => sum + loan.borrowedQty, 0);
         };
         
+        // CATATAN: 'appId' tidak terdefinisi di sini. 
+        // Saya asumsikan Anda ingin menggunakan 'projectId' atau 'appId' dari firebaseConfig
+        // Mari kita gunakan 'projectId' sebagai contoh, atau 'appId' jika Anda mendefinisikannya
+        const appId = firebaseConfig.appId; // Mengambil appId dari config
+        
         const getToolCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/crc_tools`);
         const getLendingCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/crc_lendings`);
 
@@ -98,6 +96,7 @@ const firebaseConfig = {
         // ===========================================
         window.onload = async () => {
             try {
+                // 'initializeApp' sekarang sudah terdefinisi karena di-impor di atas
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -106,11 +105,19 @@ const firebaseConfig = {
                 return;
             }
 
+            // 'onAuthStateChanged' dan fungsi auth lainnya juga sudah terdefinisi
             onAuthStateChanged(auth, async (user) => {
                 if (!user) {
                     try {
-                        if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
-                        else await signInAnonymously(auth);
+                        // Cek jika 'initialAuthToken' ada, jika tidak, pakai anonim
+                        // Variabel 'initialAuthToken' tidak terdefinisi di kode Anda,
+                        // ini bisa menyebabkan error jika Anda tidak mendefinisikannya di tempat lain.
+                        // Untuk amannya, kita cek dulu
+                        if (typeof initialAuthToken !== 'undefined' && initialAuthToken) {
+                             await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                             await signInAnonymously(auth);
+                        }
                     } catch (error) {
                         console.error("Error signing in:", error);
                         // Fallback jika semua autentikasi gagal
@@ -205,7 +212,7 @@ const firebaseConfig = {
         const loadDataListeners = () => {
             if (!isAuthReady || !db || !userId) return;
 
-            // 1. Tools Listener
+            // 1. Tools Listener ( 'onSnapshot' dan 'query' sekarang terdefinisi )
             onSnapshot(query(getToolCollectionRef()), (querySnapshot) => {
                 allTools = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 updateAllViews();
@@ -413,6 +420,7 @@ const firebaseConfig = {
             const newCondition = document.querySelector('input[name="new_condition"]:checked').value;
 
             try {
+                // 'doc', 'updateDoc', 'Timestamp' sekarang terdefinisi
                 const toolRef = doc(getToolCollectionRef(), toolId);
                 await updateDoc(toolRef, { kondisi: newCondition, lastInspection: Timestamp.now() });
                 console.log(`Kondisi alat ${toolId} diubah menjadi ${newCondition}`);
@@ -442,6 +450,7 @@ const firebaseConfig = {
             }
             
             try {
+                // 'deleteDoc' dan 'doc' sekarang terdefinisi
                 await deleteDoc(doc(getToolCollectionRef(), toolId));
                 window.closeModal('inspection-modal');
                 console.log(`Alat ${toolName} berhasil dihapus.`);
@@ -551,6 +560,7 @@ const firebaseConfig = {
             const selectedTool = allTools.find(t => t.id === toolId);
 
             try {
+                // 'doc', 'setDoc', 'Timestamp' sekarang terdefinisi
                 const newLoanRef = doc(lendingRef);
                 await setDoc(newLoanRef, {
                     toolId: toolId,
@@ -695,6 +705,7 @@ const firebaseConfig = {
             const returnEvidenPlaceholder = `[File Attached] ${fileName}`;
             
             try {
+                 // 'doc' dan 'updateDoc' sekarang terdefinisi
                  const loanRef = doc(getLendingCollectionRef(), loanId);
                  await updateDoc(loanRef, {
                      isReturned: true,
@@ -733,6 +744,7 @@ const firebaseConfig = {
             }
 
             try {
+                // 'runTransaction', 'doc', 'Timestamp' sekarang terdefinisi
                 await runTransaction(db, async (transaction) => {
                     const newToolRef = doc(toolRef);
                     transaction.set(newToolRef, {
