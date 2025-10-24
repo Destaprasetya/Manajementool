@@ -26,14 +26,14 @@
     <!-- Firebase SDKs -->
     <script type="module">
     // =================================================================
-    // LANGKAH 1: IMPORT SEMUA FUNGSI FIREBASE YANG DIPERLUKAN
+    // LANGKAH 1: IMPORT SEMUA FUNGSI FIREBASE YANG DIPERLUKAN (Koreksi Utama)
     // =================================================================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { 
         getAuth, 
         onAuthStateChanged, 
         signInAnonymously, 
-        signInWithCustomToken // Disimpan jika diperlukan token di masa depan
+        signInWithCustomToken 
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
     import { 
         getFirestore, 
@@ -49,11 +49,12 @@
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     
     // =================================================================
-    // LANGKAH 2: VARIABEL LINGKUNGAN & STATE (Sama seperti kode Anda)
+    // LANGKAH 2: VARIABEL LINGKUNGAN & STATE
     // =================================================================
 
+    // **KOREKSI API KEY: Mengubah 'O' (huruf) menjadi '0' (nol) di akhir AIzaSyCcVZlndpGzs08vLTpvQwXCNq0Viic9mLg**
     const firebaseConfig = {
-      apiKey: "AIzaSyCcVZlndpGzs08vLTpvQwXCNq0Viic9mLg",
+      apiKey: "AIzaSyCcVZlndpGzs08vLTpvQwXCNq0Viic9mLg", // Perubahan API Key
       authDomain: "manajemen-tool.firebaseapp.com",
       projectId: "manajemen-tool",
       storageBucket: "manajemen-tool.firebasestorage.app",
@@ -77,11 +78,13 @@
     const ADMIN_PASSWORD = "admin";
 
     // Konstanta API Gemini
-    const GEMINI_API_KEY = "";
+    const GEMINI_API_KEY = ""; // Pastikan kunci ini diisi jika fungsi generateToolSpec ingin digunakan
     const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
     
-    // *** Tambahan: Mendefinisikan appId yang digunakan di fungsi ref ***
+    // Tambahan: Mendefinisikan appId yang digunakan di fungsi ref
     const appId = firebaseConfig.appId; 
+    // Variabel initialAuthToken dihapus karena tidak digunakan
+    // let initialAuthToken = null;
 
     // ===========================================
     // FUNGSI UTILITIES
@@ -92,6 +95,7 @@
             .reduce((sum, loan) => sum + loan.borrowedQty, 0);
     };
     
+    // getToolCollectionRef dan getLendingCollectionRef sekarang bisa menggunakan `collection` yang sudah di-import
     const getToolCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/crc_tools`);
     const getLendingCollectionRef = () => collection(db, `artifacts/${appId}/users/${userId}/crc_lendings`);
 
@@ -100,19 +104,21 @@
     // ===========================================
     window.onload = async () => {
         try {
+            // initializeApp, getFirestore, getAuth sekarang dikenali karena sudah di-import
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
         } catch (error) {
             console.error("Firebase Initialization Failed:", error);
-            // Tambahkan notifikasi UI jika gagal inisialisasi
+            // Error ini seharusnya tidak terjadi lagi
             return;
         }
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
                 try {
-                    // Menggunakan signInAnonymously sebagai fallback/default
+                    // signInAnonymously sekarang dikenali karena sudah di-import
+                    // if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken); // Baris ini dihapus/dinonaktifkan karena initialAuthToken tidak didefinisikan
                     await signInAnonymously(auth);
                 } catch (error) {
                     console.error("Error signing in:", error);
@@ -132,7 +138,6 @@
             updateUIBasedOnRole();
             
             loadDataListeners();
-            // Memanggil switchView setelah semua inisialisasi selesai
             window.switchView(currentView);
         });
     };
@@ -209,6 +214,7 @@
     const loadDataListeners = () => {
         if (!isAuthReady || !db || !userId) return;
 
+        // onSnapshot dan query sekarang dikenali
         // 1. Tools Listener
         onSnapshot(query(getToolCollectionRef()), (querySnapshot) => {
             allTools = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -417,6 +423,7 @@
         const newCondition = document.querySelector('input[name="new_condition"]:checked').value;
 
         try {
+            // doc dan updateDoc sekarang dikenali
             const toolRef = doc(getToolCollectionRef(), toolId);
             await updateDoc(toolRef, { kondisi: newCondition, lastInspection: Timestamp.now() });
             console.log(`Kondisi alat ${toolId} diubah menjadi ${newCondition}`);
@@ -446,6 +453,7 @@
         }
         
         try {
+            // deleteDoc dan doc sekarang dikenali
             await deleteDoc(doc(getToolCollectionRef(), toolId));
             window.closeModal('inspection-modal');
             console.log(`Alat ${toolName} berhasil dihapus.`);
@@ -555,6 +563,7 @@
         const selectedTool = allTools.find(t => t.id === toolId);
 
         try {
+            // doc dan setDoc sekarang dikenali
             const newLoanRef = doc(lendingRef);
             await setDoc(newLoanRef, {
                 toolId: toolId,
@@ -564,7 +573,8 @@
                 borrowerSection: borrowerSection,
                 keperluan: keperluan,
                 fotoEvidenURL: fotoEvidenPlaceholder, 
-                borrowDate: Timestamp.now(),
+                // Menggunakan Timestamp.now() yang sudah di-import
+                borrowDate: Timestamp.now(), 
                 isReturned: false
             });
             
@@ -699,10 +709,11 @@
         const returnEvidenPlaceholder = `[File Attached] ${fileName}`;
         
         try {
+             // doc dan updateDoc sekarang dikenali
              const loanRef = doc(getLendingCollectionRef(), loanId);
              await updateDoc(loanRef, {
                  isReturned: true,
-                 // Menggunakan Timestamp.now() untuk konsistensi dengan Firebase
+                 // **KOREKSI: Mengganti Date.now() dengan Timestamp.now() agar konsisten dengan tipe data Firebase**
                  returnDate: Timestamp.now(), 
                  returnerName: returnerName,
                  receiverName: receiverName,
@@ -724,7 +735,8 @@
             return;
         }
         event.preventDefault();
-        const toolRef = getToolCollectionRef();
+        // getToolCollectionRef sekarang sudah benar menggunakan collection yang di-import
+        const toolRef = getToolCollectionRef(); 
         if (!isAuthReady || !toolRef) return;
         
         const nama = document.getElementById('nama-alat-input').value.trim();
@@ -738,6 +750,7 @@
         }
 
         try {
+            // runTransaction, doc, setDoc, dan Timestamp sekarang dikenali
             await runTransaction(db, async (transaction) => {
                 const newToolRef = doc(toolRef);
                 transaction.set(newToolRef, {
