@@ -33,9 +33,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/fireba
   import { 
     getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken
   } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } 
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-const storage = getStorage(app);
+
 const firebaseConfig = {
   apiKey: "AIzaSyDVkLKGH6Q3ZFtetUufmNdVKZyqQL2M0Mo",
   authDomain: "sistemmanajementool.firebaseapp.com",
@@ -45,7 +43,35 @@ const firebaseConfig = {
   appId: "1:1019326909025:web:d5991cd76ec14774367820",
   measurementId: "G-J9VL1CCZRZ"
 };
-// ...
+// ============================
+// CLOUDINARY CONFIG & UPLOAD HELPER
+// ============================
+const CLOUDINARY_UPLOAD_URL = "https://api.cloudinary.com/v1_1/dsx8o0bf5/image/upload";
+const CLOUDINARY_UPLOAD_PRESET = "unsigned_eviden"; // preset yang kamu buat (unsigned)
+
+async function uploadToCloudinary(file) {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+    const res = await fetch(CLOUDINARY_UPLOAD_URL, {
+      method: "POST",
+      body: formData
+    });
+    const data = await res.json();
+    // jika gagal Cloudinary biasanya mengembalikan object error
+    if (!data || !data.secure_url) {
+      console.error("Cloudinary upload response:", data);
+      return null;
+    }
+    return data.secure_url; // URL final (https)
+  } catch (err) {
+    console.error("Upload ke Cloudinary gagal:", err);
+    return null;
+  }
+}
+
 
 // Variabel Firebase dan Authentication
 // Definisikan variabel lain menggunakan objek konfigurasi yang valid
@@ -148,8 +174,6 @@ window.onload = async () => {
     const app = initializeApp(firebaseConfig);
     const appId = firebaseConfig.appId; // ✅ FIX appId
     db = getFirestore(app);
-    const storage = getStorage(app);
-
     auth = getAuth(app);
 
     onAuthStateChanged(auth, async (user) => {
@@ -296,22 +320,32 @@ const getLendingCollectionRef = () => collection(db, "lendings");
         };
         
         window.openPhotoModal = (evidenceString) => {
-            const modal = document.getElementById('photo-view-modal');
-            const content = document.getElementById('photo-modal-content');
-            
-            const isPlaceholder = evidenceString.startsWith('[File Attached]');
-            
-            content.innerHTML = `
-                <div class="p-6 text-center">
-                    <p class="text-gray-700 font-bold mb-4">Bukti Foto Eviden (Simulasi)</p>
-                    ${isPlaceholder 
-                        ? `<p class="text-xl text-gray-600 font-mono bg-gray-100 p-4 rounded-lg break-all">${evidenceString}</p>
-                           <p class="text-sm text-gray-400 mt-2">Nama file ini tersimpan sebagai bukti. Jika menggunakan sistem cloud, foto akan dimuat di sini.</p>`
-                        : `<p class="text-red-500">Bukti Foto Tidak Ditemukan atau Link tidak valid.</p>`
-                    }
-                </div>
-            `;
-            modal.classList.remove('hidden');
+            window.openPhotoModal = (evidenceString) => {
+  const modal = document.getElementById('photo-view-modal');
+  const content = document.getElementById('photo-modal-content');
+  if (!evidenceString) {
+    content.innerHTML = `<div class="p-6 text-center"><p class="text-gray-700 font-bold mb-4">Tidak ada bukti foto.</p></div>`;
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  const isURL = typeof evidenceString === 'string' && (evidenceString.startsWith('http://') || evidenceString.startsWith('https://'));
+  const isPlaceholder = evidenceString.startsWith('[File Attached]');
+
+  content.innerHTML = `
+    <div class="p-6 text-center">
+      <p class="text-gray-700 font-bold mb-4">Bukti Foto Eviden</p>
+      ${isURL
+        ? `<img src="${evidenceString}" alt="Eviden Foto" class="mx-auto rounded-lg shadow-md max-h-96 object-contain" />`
+        : isPlaceholder
+        ? `<p class="text-xl text-gray-600 font-mono bg-gray-100 p-4 rounded-lg break-all">${evidenceString}</p>`
+        : `<p class="text-red-500">Bukti Foto Tidak Valid.</p>`
+      }
+    </div>
+  `;
+  modal.classList.remove('hidden');
+};
+
         };
 
         // ===========================================
@@ -590,46 +624,70 @@ const getLendingCollectionRef = () => collection(db, "lendings");
         };
         
         window.addLending = async (event) => {
-            event.preventDefault();
-            const lendingRef = getLendingCollectionRef();
-            const pinjamBtn = document.getElementById('pinjam-tool-btn');
-            if (!lendingRef || pinjamBtn.disabled) return; 
+  event.preventDefault();
 
-            const toolId = document.getElementById('pinjam-tool-select').value;
-            const borrowedQty = parseInt(document.getElementById('pinjam-jumlah-input').value, 10);
-            const borrowerName = document.getElementById('peminjam-nama-input').value.trim();
-            const borrowerSection = document.getElementById('peminjam-section-input').value.trim();
-            const keperluan = document.getElementById('peminjam-keperluan-input').value.trim();
-            
-            const fotoInput = document.getElementById('peminjam-foto-input');
-            const fileName = fotoInput.files[0] ? fotoInput.files[0].name : "Foto_Tidak_Tersedia";
-            const fotoEvidenPlaceholder = `[File Attached] ${fileName}`;
-            
-            const selectedTool = allTools.find(t => t.id === toolId);
+  const fotoInput = document.getElementById("peminjam-foto-input");
+  const toolId = document.getElementById("pinjam-tool-select").value;
+  const borrowedQty = parseInt(document.getElementById("pinjam-jumlah-input").value);
+  const borrowerName = document.getElementById("peminjam-nama-input").value.trim();
+  const borrowerSection = document.getElementById("peminjam-section-input").value.trim();
+  const keperluan = document.getElementById("peminjam-keperluan-input").value.trim();
 
-            try {
-                const newLoanRef = doc(lendingRef);
-                await setDoc(newLoanRef, {
-                    toolId: toolId,
-                    toolName: selectedTool.nama,
-                    borrowedQty: borrowedQty,
-                    borrowerName: borrowerName,
-                    borrowerSection: borrowerSection,
-                    keperluan: keperluan,
-                    fotoEvidenURL: fotoEvidenPlaceholder, 
-                    borrowDate: Timestamp.now(),
-                    isReturned: false
-                });
-                
-                document.getElementById('add-lending-form').reset();
-                window.updateAvailableQtyDisplay();
-                window.checkLendingFormValidity();
-                console.log(`Peminjaman ${borrowedQty}x ${selectedTool.nama} berhasil dicatat.`);
-                
-            } catch (error) {
-                console.error("Error adding lending document: ", error);
-            }
-        };
+  if (!toolId || !borrowedQty || !borrowerName || !keperluan) {
+    alert("❌ Lengkapi semua data sebelum menyimpan.");
+    return;
+  }
+
+  const selectedTool = allTools.find(t => t.id === toolId);
+  const borrowedNow = getBorrowedQty(toolId);
+  const availableStock = selectedTool.jumlah - borrowedNow;
+
+  // 🔹 Validasi stok dan kondisi alat
+  if (selectedTool.kondisi !== "baik") {
+    alert(`⚠️ Alat "${selectedTool.nama}" tidak dapat dipinjam karena kondisinya ${selectedTool.kondisi.toUpperCase()}.`);
+    return;
+  }
+
+  if (availableStock <= 0) {
+    alert(`⚠️ Stok alat "${selectedTool.nama}" sedang habis atau masih dipinjam. Tunggu pengembalian terlebih dahulu.`);
+    return;
+  }
+
+  if (borrowedQty > availableStock) {
+    alert(`⚠️ Jumlah yang diminta (${borrowedQty}) melebihi stok tersedia (${availableStock}).`);
+    return;
+  }
+
+  // 🔹 Upload foto ke Cloudinary
+  let fotoEvidenURL = `[File Attached] ${fotoInput.files[0] ? fotoInput.files[0].name : "Foto_Tidak_Tersedia"}`;
+  if (fotoInput.files && fotoInput.files[0]) {
+    const uploadedUrl = await uploadToCloudinary(fotoInput.files[0]);
+    if (uploadedUrl) {
+      fotoEvidenURL = uploadedUrl;
+    } else {
+      console.warn("⚠️ Upload Cloudinary gagal — menyimpan placeholder nama file.");
+    }
+  }
+
+  // 🔹 Simpan ke Firestore
+  const newLoanRef = doc(getLendingCollectionRef());
+  await setDoc(newLoanRef, {
+    toolId,
+    toolName: selectedTool.nama,
+    borrowedQty,
+    borrowerName,
+    borrowerSection,
+    keperluan,
+    fotoEvidenURL,
+    borrowDate: Timestamp.now(),
+    isReturned: false,
+  });
+
+  document.getElementById("add-lending-form").reset();
+  alert("✅ Peminjaman berhasil disimpan!");
+};
+
+
 
         // ===========================================
         // FUNGSI PENGEMBALIAN & RIWAYAT
@@ -645,12 +703,34 @@ const getLendingCollectionRef = () => collection(db, "lendings");
             }
 
             lendings.forEach(loan => {
+              
                 const tr = document.createElement('tr');
                 tr.className = 'border-b hover:bg-yellow-50';
 
                 const borrowDate = loan.borrowDate ? new Date(loan.borrowDate).toLocaleDateString('id-ID') : 'N/A';
                 
-                const evidenceDisplay = `<span onclick="window.openPhotoModal('${loan.fotoEvidenURL}')" class="text-blue-500 hover:text-blue-700 clickable-text">Lihat Foto Eviden</span>`;
+                let evidenceDisplay = '';
+if (loan.fotoEvidenURL && (loan.fotoEvidenURL.startsWith('http') || loan.fotoEvidenURL.startsWith('https'))) {
+  // tampilkan thumbnail kecil + link
+  evidenceDisplay = `
+    <div class="flex items-center justify-center space-x-2">
+      <img src="${loan.fotoEvidenURL}" alt="thumb" class="h-12 w-16 object-cover rounded-md shadow-sm" />
+      <span onclick="window.openPhotoModal('${loan.fotoEvidenURL}')" class="text-blue-500 hover:text-blue-700 clickable-text">Lihat</span>
+    </div>
+  `;
+} else {
+  evidenceDisplay = $
+  loan.fotoEvidenURL && (loan.fotoEvidenURL.startsWith('http://') || loan.fotoEvidenURL.startsWith('https://'))
+    ? `
+      <div class="flex items-center justify-center space-x-2">
+        <img src="${loan.fotoEvidenURL}" alt="Foto Eviden" class="h-12 w-16 object-cover rounded-md shadow-sm cursor-pointer" onclick="window.openPhotoModal('${loan.fotoEvidenURL}')" />
+        <span class="text-blue-500 hover:text-blue-700 clickable-text" onclick="window.openPhotoModal('${loan.fotoEvidenURL}')">Lihat</span>
+      </div>
+    `
+    : `<span onclick="window.openPhotoModal('${loan.fotoEvidenURL || ''}')" class="text-blue-500 hover:text-blue-700 clickable-text">Lihat Foto Eviden</span>`;
+
+}
+
 
                 tr.innerHTML = `
                     <td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">${loan.toolName}</td>
@@ -670,43 +750,51 @@ const getLendingCollectionRef = () => collection(db, "lendings");
         };
         
         const renderReturnHistory = (lendings) => {
-            const tbody = document.getElementById('return-history-body');
-            if (!tbody) return;
-            tbody.innerHTML = '';
-            
-            // Sort by return date descending
-            lendings.sort((a, b) => (b.returnDate || 0) - (a.returnDate || 0));
+  const tbody = document.getElementById('return-history-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
 
-            if (lendings.length === 0) {
-                 tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-gray-500">Belum ada riwayat pengembalian.</td></tr>`;
-                 return;
-            }
+  // 🔹 Tampilkan semua data (tidak dibatasi 10)
+  const allSorted = [...lendings].sort((a, b) => (b.returnDate || 0) - (a.returnDate || 0));
 
-            lendings.slice(0, 10).forEach(loan => {
-                const tr = document.createElement('tr');
-                tr.className = 'border-b hover:bg-gray-50';
+  if (allSorted.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-gray-500">Belum ada riwayat peminjaman/pengembalian.</td></tr>`;
+    return;
+  }
 
-                const returnDate = loan.returnDate ? new Date(loan.returnDate).toLocaleDateString('id-ID') : 'N/A';
-                
-                const returnEvidenceDisplay = loan.returnFotoEvidenURL 
-                    ? `<span onclick="window.openPhotoModal('${loan.returnFotoEvidenURL}')" class="text-green-500 hover:text-green-700 clickable-text">Lihat Eviden Kembali</span>`
-                    : `<span class="text-gray-400">N/A</span>`;
+  allSorted.forEach(loan => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b hover:bg-gray-50';
 
-                tr.innerHTML = `
-                    <td class="px-4 py-3 text-sm font-medium text-gray-600 whitespace-nowrap">${loan.toolName}</td>
-                    <td class="px-4 py-3 text-center text-sm">${loan.borrowedQty}</td>
-                    <td class="px-4 py-3 text-sm">${loan.borrowerName}</td>
-                    <td class="px-4 py-3 text-sm">${loan.returnerName || '-'}</td>
-                    <td class="px-4 py-3 text-sm">${loan.receiverName || '-'}</td>
-                    <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${returnDate}</td>
-                    <td class="px-4 py-3 text-center text-sm">${returnEvidenceDisplay}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        };
+    const borrowDate = loan.borrowDate ? new Date(loan.borrowDate).toLocaleDateString('id-ID') : '-';
+    const returnDate = loan.returnDate ? new Date(loan.returnDate).toLocaleDateString('id-ID') : '-';
+    const returnEvidenceDisplay = loan.returnFotoEvidenURL 
+      ? `<span onclick="window.openPhotoModal('${loan.returnFotoEvidenURL}')" class="text-green-500 hover:text-green-700 clickable-text">Lihat Eviden Kembali</span>`
+      : `<span class="text-gray-400">Belum Ada</span>`;
+
+    tr.innerHTML = `
+      <td class="px-4 py-3 text-sm font-medium text-gray-600 whitespace-nowrap">${loan.toolName}</td>
+      <td class="px-4 py-3 text-center text-sm">${loan.borrowedQty}</td>
+      <td class="px-4 py-3 text-sm">${loan.borrowerName}</td>
+      <td class="px-4 py-3 text-sm">${loan.borrowerSection || '-'}</td>
+      <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${borrowDate}</td>
+      <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${returnDate}</td>
+      <td class="px-4 py-3 text-center text-sm">${returnEvidenceDisplay}</td>
+      <td class="px-4 py-3 text-center text-sm font-semibold ${loan.isReturned ? 'text-green-600' : 'text-red-600'}">
+        ${loan.isReturned ? 'Selesai' : 'Belum Kembali'}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+};
+
         
         window.openReturnEvidenceModal = (loanId) => {
-            const modal = document.getElementById('return-evidence-modal');
+            const modal = document.getElementById("return-evidence-modal");
+  // simpan loanId ke tombol “Simpan” agar bisa dibaca saat finalizeReturn
+  document
+    .getElementById("finalize-return-btn")
+    .setAttribute("data-loan-id", loanId);
             const form = document.getElementById('return-evidence-form');
             const fileInput = document.getElementById('return-foto-input');
             const returnerInput = document.getElementById('returner-name-input');
@@ -737,35 +825,55 @@ const getLendingCollectionRef = () => collection(db, "lendings");
         };
 
         window.finalizeReturn = async () => {
-            const loanId = document.getElementById('finalize-return-btn').getAttribute('data-loan-id');
-            const fileInput = document.getElementById('return-foto-input');
-            
-            const returnerName = document.getElementById('returner-name-input').value.trim();
-            const receiverName = document.getElementById('receiver-name-input').value.trim();
+  // 🔹 ambil ID peminjaman dari tombol Simpan di modal
+  const loanId = document
+    .getElementById("finalize-return-btn")
+    .getAttribute("data-loan-id");
 
-            if (!loanId || fileInput.files.length === 0 || !returnerName || !receiverName) {
-                console.error("Error: Mohon lengkapi Nama Pengembali, Nama Penerima, dan bukti foto pengembalian.");
-                return;
-            }
+  // 🔹 ambil elemen input
+  const fileInput = document.getElementById("return-foto-input");
+  const returnerName = document.getElementById("returner-name-input").value.trim();
+  const receiverName = document.getElementById("receiver-name-input").value.trim();
 
-            const fileName = fileInput.files[0].name;
-            const returnEvidenPlaceholder = `[File Attached] ${fileName}`;
-            
-            try {
-                 const loanRef = doc(getLendingCollectionRef(), loanId);
-                 await updateDoc(loanRef, {
-                     isReturned: true,
-                     returnDate: Date.now(),
-                     returnerName: returnerName,
-                     receiverName: receiverName,
-                     returnFotoEvidenURL: returnEvidenPlaceholder
-                 });
-                 console.log(`Pinjaman ${loanId} berhasil dicatat sebagai kembali. Penerima: ${receiverName}`);
-                 window.closeModal('return-evidence-modal');
-            } catch (error) {
-                 console.error("Error returning tool: ", error);
-            }
-        };
+  // 🔹 validasi
+  if (!loanId) {
+    alert("❌ Gagal: ID peminjaman tidak ditemukan (loanId). Pastikan klik tombol Kembalikan dari daftar.");
+    return;
+  }
+
+  if (!fileInput.files[0]) {
+    alert("Silakan pilih foto bukti pengembalian terlebih dahulu.");
+    return;
+  }
+
+  // 🔹 upload ke Cloudinary
+  let returnFotoEvidenURL = `[File Attached] ${fileInput.files[0].name}`;
+  const uploadedUrl = await uploadToCloudinary(fileInput.files[0]);
+  if (uploadedUrl) {
+    returnFotoEvidenURL = uploadedUrl;
+  } else {
+    console.warn("Upload Cloudinary gagal — menyimpan placeholder nama file.");
+  }
+
+  // 🔹 update Firestore
+  try {
+    const loanRef = doc(getLendingCollectionRef(), loanId);
+    await updateDoc(loanRef, {
+      isReturned: true,
+      returnDate: Date.now(),
+      returnerName,
+      receiverName,
+      returnFotoEvidenURL,
+    });
+
+    alert("✅ Pengembalian berhasil disimpan!");
+    window.closeModal("return-evidence-modal");
+  } catch (error) {
+    console.error("Firestore update error:", error);
+    alert("❌ Gagal menyimpan data pengembalian ke Firestore.");
+  }
+};
+
 
         // ===========================================
         // FUNGSI INVENTARIS (TAMBAH ALAT) & GEMINI
@@ -894,50 +1002,6 @@ const getLendingCollectionRef = () => collection(db, "lendings");
                 renderLendingForm(allTools);
             }
         };
-        // ============================
-// 📸 Upload dan Simpan Eviden Foto
-// ============================
-async function uploadEvidenAndSave(borrowerName, toolName) {
-  const fotoPeminjaman = document.getElementById("eviden-peminjaman").files[0];
-  const fotoPengembalian = document.getElementById("eviden-pengembalian").files[0];
-  
-  let peminjamanURL = "";
-  let pengembalianURL = "";
-
-  if (fotoPeminjaman) {
-    const peminjamanRef = ref(storage, `eviden/peminjaman/${Date.now()}_${fotoPeminjaman.name}`);
-    await uploadBytes(peminjamanRef, fotoPeminjaman);
-    peminjamanURL = await getDownloadURL(peminjamanRef);
-  }
-
-  if (fotoPengembalian) {
-    const pengembalianRef = ref(storage, `eviden/pengembalian/${Date.now()}_${fotoPengembalian.name}`);
-    await uploadBytes(pengembalianRef, fotoPengembalian);
-    pengembalianURL = await getDownloadURL(pengembalianRef);
-  }
-
-  await addDoc(collection(db, "lendings"), {
-    borrower: borrowerName,
-    tool: toolName,
-    borrowDate: new Date(),
-    evidenPeminjaman: peminjamanURL,
-    evidenPengembalian: pengembalianURL,
-  });
-}
-
-// ============================
-// 🖼️ Modal Eviden Foto
-// ============================
-window.openEvidenModal = (url) => {
-  if (!url) return alert("Tidak ada foto eviden");
-  document.getElementById("eviden-img").src = url;
-  document.getElementById("eviden-modal").classList.remove("hidden");
-};
-window.closeEvidenModal = () => {
-  document.getElementById("eviden-modal").classList.add("hidden");
-};
-
-
     </script>
 </head>
 
@@ -1318,16 +1382,6 @@ window.closeEvidenModal = () => {
                         Konfirmasi Pengembalian
                     </button>
                 </div>
-                <!-- Modal Eviden Foto -->
-<div id="eviden-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-  <div class="bg-white p-4 rounded-lg shadow-lg text-center">
-    <h2 class="text-lg font-semibold mb-2">Eviden Foto</h2>
-    <img id="eviden-img" src="" alt="Eviden Foto" class="max-w-[80vw] max-h-[80vh] mx-auto rounded-lg border">
-    <button onclick="closeEvidenModal()" class="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg">Tutup</button>
-  </div>
-</div>
-
-
             </form>
         </div>
     </div>
